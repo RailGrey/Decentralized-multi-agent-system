@@ -20,7 +20,11 @@ shared scored memory, and peer review):
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Tuple
 from rag_agent import MistralRAGAgent
+from summarizer_agent import MistralSummarizerAgent
+from prompts import ESTIMATE_CONFIDENCE_SYSTEM_PROMPT, BRAINSTORM_SYSTEM_PROMPT, GENERATE_SOLUTION_SYSTEM_PROMPT, REVIEW_SYSTEM_PROMPT, REVISE_SYSTEM_PROMPT, VOTING_SYSTEM_PROMPT
+from schemas import CONFIDENCE_SCHEMA, BRAINSTORM_SCHEMA, CODE_GEN_SCHEMA, REVIEW_SCHEMA, REVISION_SCHEMA, VOTING_SCHEMA
 import random
+import time
 
 
 # ─── Data Structures ────────────────────────────────────────────────────────
@@ -35,225 +39,6 @@ class Idea:
     score: float                                          # Σ confidence of supporters
     supporters: List[str] = field(default_factory=list)  # agent names
     critics: List[Dict[str, str]] = field(default_factory=list)  # {"agent", "reason"}
-
-
-# ─── Response Schemas (Mistral strict-mode compatible) ──────────────────────
-# Every field that may be semantically empty is still *present* in the output
-# (set to "" or []).  This satisfies strict: True.
-
-CONFIDENCE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "confidence": {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "description": (
-                "Your confidence as a NUMERIC VALUE between 0.0 and 1.0. "
-                "Examples: 0.9 for high confidence, 0.5 for medium, 0.2 for low. "
-                "DO NOT use words like 'high', 'medium', or 'low'. "
-                "MUST be a decimal number."
-            )
-        },
-        "reason": {
-            "type": "string",
-            "description": "One-sentence explanation for your confidence level."
-        }
-    },
-    "required": ["confidence", "reason"],
-    "additionalProperties": False
-}
-
-BRAINSTORM_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "contributions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["add", "support", "criticize"],
-                        "description": (
-                            "'add' — propose a new idea.  "
-                            "'support' — agree with an existing idea (your confidence is added to its score).  "
-                            "'criticize' — flag a specific flaw in an existing idea."
-                        )
-                    },
-                    "idea_id": {
-                        "type": "string",
-                        "description": (
-                            "The idea_id to support or criticize.  "
-                            "Must be an empty string when action is 'add'."
-                        )
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": (
-                            "The new idea text when action is 'add'.  "
-                            "Must be an empty string when action is 'support' or 'criticize'."
-                        )
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": (
-                            "Reason for criticism when action is 'criticize'.  "
-                            "Must be an empty string when action is 'add' or 'support'."
-                        )
-                    }
-                },
-                "required": ["action", "idea_id", "text", "reason"],
-                "additionalProperties": False
-            },
-            "description": (
-                "Your contributions.  Do NOT add a new idea when an existing one "
-                "already covers the same point — support it instead."
-            )
-        }
-    },
-    "required": ["contributions"],
-    "additionalProperties": False
-}
-
-CODE_GEN_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "ideas_used": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "idea_ids from the brainstorm that directly informed your solution."
-        },
-        "solution": {
-            "type": "string",
-            "description": "Complete, runnable solution code."
-        },
-        "time_complexity": {
-            "type": "string",
-            "description": "Time complexity (e.g. 'O(n log n)')."
-        },
-        "space_complexity": {
-            "type": "string",
-            "description": "Space complexity (e.g. 'O(n)')."
-        },
-        "edge_cases": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Edge cases your solution handles and how."
-        }
-    },
-    "required": ["ideas_used", "solution", "time_complexity", "space_complexity", "edge_cases"],
-    "additionalProperties": False
-}
-
-REVIEW_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "reviews": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "agent_reviewed": {
-                        "type": "string",
-                        "description": "Name of the agent whose solution you are reviewing."
-                    },
-                    "verdict": {
-                        "type": "string",
-                        "enum": ["approve", "fix"],
-                        "description": "'approve' if the solution is correct, 'fix' if it has issues."
-                    },
-                    "feedback": {
-                        "type": "string",
-                        "description": (
-                            "Detailed feedback.  If approving, explain why it is correct.  "
-                            "If fixing, describe the exact issue."
-                        )
-                    },
-                    "counterexample": {
-                        "type": "string",
-                        "description": "A concrete input that breaks the solution.  Empty string if none."
-                    }
-                },
-                "required": ["agent_reviewed", "verdict", "feedback", "counterexample"],
-                "additionalProperties": False
-            },
-            "description": "One review entry per other agent.  You must review every other agent."
-        }
-    },
-    "required": ["reviews"],
-    "additionalProperties": False
-}
-
-REVISION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "ideas_used": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "idea_ids from brainstorm that inform your solution."
-        },
-        "solution": {
-            "type": "string",
-            "description": "Complete, revised solution code."
-        },
-        "time_complexity": {
-            "type": "string",
-            "description": "Time complexity."
-        },
-        "space_complexity": {
-            "type": "string",
-            "description": "Space complexity."
-        },
-        "edge_cases": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Edge cases your solution handles."
-        },
-        "changes_made": {
-            "type": "string",
-            "description": (
-                "What you changed and why, based on peer feedback.  "
-                "If no changes were needed, explain why the feedback was incorrect."
-            )
-        }
-    },
-    "required": ["ideas_used", "solution", "time_complexity", "space_complexity", "edge_cases", "changes_made"],
-    "additionalProperties": False
-}
-
-VOTING_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "votes": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "agent_name": {
-                        "type": "string",
-                        "description": "Name of the agent whose solution you are voting for"
-                    },
-                    "score": {
-                        "type": "number",
-                        "minimum": 0.0,
-                        "maximum": 10.0,
-                        "description": "Your score for this solution (0.0 = worst, 10.0 = best)"
-                    },
-                    "reasoning": {
-                        "type": "string",
-                        "description": "Why you gave this score - consider correctness, efficiency, clarity, edge cases"
-                    }
-                },
-                "required": ["agent_name", "score", "reasoning"],
-                "additionalProperties": False
-            },
-            "description": "One vote entry for each agent's solution (including your own)"
-        }
-    },
-    "required": ["votes"],
-    "additionalProperties": False
-}
 
 
 # ─── Solver ─────────────────────────────────────────────────────────────────
@@ -299,6 +84,7 @@ class BrainstormSolver:
         print("PHASE 1 — Confidence Estimation")
         print("=" * 70)
         confidences = self._estimate_confidence(task)
+        time.sleep(10)
 
         print("\n" + "=" * 70)
         print("PHASE 2 — Core Agent Selection  (threshold = mean)")
@@ -309,21 +95,25 @@ class BrainstormSolver:
         print("PHASE 3 — Brainstorm")
         print("=" * 70)
         ideas = self._brainstorm(task, core_agents, confidences)
+        time.sleep(10)
 
         print("\n" + "=" * 70)
         print("PHASE 4 — Code Generation")
         print("=" * 70)
         solutions = self._generate_solutions(task, core_agents, ideas)
+        time.sleep(10)
 
         print("\n" + "=" * 70)
         print("PHASE 5 — Peer Review & Revision")
         print("=" * 70)
         final_solutions = self._review_and_revise(task, core_agents, solutions, ideas)
+        time.sleep(10)
 
         print("\n" + "=" * 70)
         print("PHASE 6 — Voting")
         print("=" * 70)
         votes, winner = self._voting_phase(task, core_agents, final_solutions)
+        time.sleep(10)
 
         print("\n" + "=" * 70)
         print("PHASE 7 — Final Summary")
@@ -349,20 +139,9 @@ class BrainstormSolver:
         for agent_name, agent in self.agent_system.items():
             result = agent.call(
                 task=task,
-                system_prompt=(
-                    f"You are {agent_name}, an expert in {agent.expertise}.\n\n"
-                    f"Estimate your confidence in solving the given coding task.\n\n"
-                    f"CRITICAL REQUIREMENTS:\n"
-                    f"• The 'confidence' field MUST be a number between 0.0 and 1.0\n"
-                    f"• DO NOT use text like 'high', 'medium', or 'low'\n"
-                    f"• Examples: 0.9 (high confidence), 0.5 (medium), 0.2 (low)\n"
-                    f"• Be honest: only assign high confidence (>0.7) when the task "
-                    f"clearly falls within your expertise.\n\n"
-                    f"RESPOND IN JSON FORMAT with this structure:\n"
-                    f"{{\n"
-                    f'  "confidence": <number between 0.0 and 1.0>,\n'
-                    f'  "reason": "<one-sentence explanation>"\n'
-                    f"}}\n"
+                system_prompt=ESTIMATE_CONFIDENCE_SYSTEM_PROMPT.substitute(
+                    agent_name=agent_name,
+                    agent_expertise=agent.expertise,
                 ),
                 response_schema=CONFIDENCE_SCHEMA,
                 schema_name="confidence_estimation"
@@ -445,29 +224,11 @@ class BrainstormSolver:
 
             result = agent.call(
                 task=task,
-                system_prompt=(
-                    f"You are {agent_name}, an expert in {agent.expertise}.\n"
-                    f"Your confidence on this task: {agent_conf:.2f}\n\n"
-                    f"Participate in a collaborative brainstorm.  Rules:\n"
-                    f"• If an existing idea already covers your thought, do NOT "
-                    f"duplicate it — use 'support' to raise its score.\n"
-                    f"• Only 'add' genuinely new ideas.\n"
-                    f"• When you 'support', your confidence ({agent_conf:.2f}) is "
-                    f"added to the idea's score.\n"
-                    f"• Use 'criticize' to flag a specific flaw.\n\n"
-                    + self._format_ideas(ideas)
-                    + "\n\n"
-                    f"RESPOND IN JSON FORMAT with this structure:\n"
-                    f"{{\n"
-                    f'  "contributions": [\n'
-                    f'    {{\n'
-                    f'      "action": "add" | "support" | "criticize",\n'
-                    f'      "idea_id": "<id to support/criticize, or empty string for add>",\n'
-                    f'      "text": "<new idea text for add, or empty string otherwise>",\n'
-                    f'      "reason": "<criticism reason for criticize, or empty string otherwise>"\n'
-                    f'    }}\n'
-                    f'  ]\n'
-                    f"}}\n"
+                system_prompt=BRAINSTORM_SYSTEM_PROMPT.substitute(
+                    agent_name=agent_name,
+                    agent_expertise=agent.expertise,
+                    agent_conf=f"{agent_conf:.2f}",
+                    ideas=self._format_ideas(ideas)
                 ),
                 response_schema=BRAINSTORM_SCHEMA,
                 schema_name="brainstorm_contribution",
@@ -524,23 +285,10 @@ class BrainstormSolver:
 
             result = agent.call(
                 task=task,
-                system_prompt=(
-                    f"You are {agent_name}, an expert in {agent.expertise}.\n"
-                    f"Generate a complete solution using the brainstorm insights below.\n\n"
-                    f"Brainstorm results:\n{ideas_text}\n\n"
-                    f"Requirements:\n"
-                    f"• Reference the specific idea_ids you rely on.\n"
-                    f"• State time and space complexity.\n"
-                    f"• List and handle key edge cases.\n"
-                    f"• Write complete, runnable code.\n\n"
-                    f"RESPOND IN JSON FORMAT with this structure:\n"
-                    f"{{\n"
-                    f'  "ideas_used": ["idea_1", "idea_3"],\n'
-                    f'  "solution": "<complete runnable code>",\n'
-                    f'  "time_complexity": "O(n log n)",\n'
-                    f'  "space_complexity": "O(n)",\n'
-                    f'  "edge_cases": ["empty input", "single element", "..."]\n'
-                    f"}}\n"
+                system_prompt=GENERATE_SOLUTION_SYSTEM_PROMPT.substitute(
+                    agent_name=agent_name,
+                    agent_expertise=agent.expertise,
+                    ideas_text=ideas_text
                 ),
                 response_schema=CODE_GEN_SCHEMA,
                 schema_name="code_generation",
@@ -581,27 +329,11 @@ class BrainstormSolver:
 
                 result = agent.call(
                     task=task,
-                    system_prompt=(
-                        f"You are {agent_name}, an expert in {agent.expertise}.\n"
-                        f"Review every other agent's solution.  Look for bugs, wrong "
-                        f"edge-case handling, incorrect complexity claims.\n"
-                        f"Provide a counterexample whenever possible.\n"
-                        f"You MUST produce exactly one review entry per other agent.\n\n"
-                        f"Your own current solution (for context):\n"
-                        f"{self._fmt_solution(agent_name, current.get(agent_name, {}))}\n\n"
-                        f"Solutions to review:\n"
-                        f"{self._fmt_other_solutions(current, agent_name)}\n\n"
-                        f"RESPOND IN JSON FORMAT with this structure:\n"
-                        f"{{\n"
-                        f'  "reviews": [\n'
-                        f'    {{\n'
-                        f'      "agent_reviewed": "<agent name>",\n'
-                        f'      "verdict": "approve" | "fix",\n'
-                        f'      "feedback": "<detailed explanation>",\n'
-                        f'      "counterexample": "<input that breaks it, or empty string>"\n'
-                        f'    }}\n'
-                        f'  ]\n'
-                        f"}}\n"
+                    system_prompt=REVIEW_SYSTEM_PROMPT.substitute(
+                        agent_name=agent_name,
+                        agent_expertise=agent.expertise,
+                        own_solution=self._fmt_solution(agent_name, current.get(agent_name, {})),
+                        other_solutions=self._fmt_other_solutions(current, agent_name)
                     ),
                     response_schema=REVIEW_SCHEMA,
                     schema_name="code_review",
@@ -624,25 +356,12 @@ class BrainstormSolver:
 
                 result = agent.call(
                     task=task,
-                    system_prompt=(
-                        f"You are {agent_name}, an expert in {agent.expertise}.\n"
-                        f"Revise your solution based on peer feedback below.  If the "
-                        f"feedback is wrong, keep your code but explain why in "
-                        f"changes_made.\n\n"
-                        f"Brainstorm insights:\n{ideas_text}\n\n"
-                        f"Your current solution:\n"
-                        f"{self._fmt_solution(agent_name, own)}\n\n"
-                        f"Feedback you received:\n"
-                        f"{self._collect_feedback_for(reviews, agent_name)}\n\n"
-                        f"RESPOND IN JSON FORMAT with this structure:\n"
-                        f"{{\n"
-                        f'  "ideas_used": ["idea_1", "idea_2"],\n'
-                        f'  "solution": "<complete revised code>",\n'
-                        f'  "time_complexity": "O(n)",\n'
-                        f'  "space_complexity": "O(1)",\n'
-                        f'  "edge_cases": ["case1", "case2"],\n'
-                        f'  "changes_made": "<what you changed and why>"\n'
-                        f"}}\n"
+                    system_prompt=REVISE_SYSTEM_PROMPT.substitute(
+                        agent_name=agent_name,
+                        agent_expertise=agent.expertise,
+                        ideas_text=ideas_text,
+                        own_solution=self._fmt_solution(agent_name, own),
+                        other_solutions=self._collect_feedback_for(reviews, agent_name)
                     ),
                     response_schema=REVISION_SCHEMA,
                     schema_name="code_revision",
@@ -680,23 +399,10 @@ class BrainstormSolver:
             
             result = agent.call(
                 task=task,
-                system_prompt=(
-                    f"You are {agent_name}, an expert in {agent.expertise}.\n"
-                    f"Vote on all solutions below. Rate each solution from 0.0 to 10.0.\n"
-                    f"Consider: correctness, efficiency, code clarity, edge case handling.\n"
-                    f"Be objective — you must vote on ALL solutions including your own.\n\n"
-                    f"All solutions:\n"
-                    f"{self._format_all_solutions(solutions)}\n\n"
-                    f"RESPOND IN JSON FORMAT with this structure:\n"
-                    f"{{\n"
-                    f'  "votes": [\n'
-                    f'    {{\n'
-                    f'      "agent_name": "<agent name>",\n'
-                    f'      "score": 8.5,\n'
-                    f'      "reasoning": "<why this score>"\n'
-                    f'    }}\n'
-                    f'  ]\n'
-                    f"}}\n"
+                system_prompt=VOTING_SYSTEM_PROMPT.substitute(
+                    agent_name=agent_name,
+                    agent_expertise=agent.expertise,
+                    all_solutions=self._format_all_solutions(solutions)
                 ),
                 response_schema=VOTING_SCHEMA,
                 schema_name="voting",
@@ -747,50 +453,38 @@ class BrainstormSolver:
     ) -> Dict[str, Any]:
         """
         Create final summary using the winning solution.
-        Imports and uses MistralSummarizerAgent if available.
         """
-        try:
-            from summarizer_agent import MistralSummarizerAgent
-            
-            # Get API key from one of the agents
-            api_key = list(self.agent_system.values())[0].api_key
-            
-            summarizer = MistralSummarizerAgent(api_key=api_key)
-            
-            # Build context for summarizer
-            summary_context = {
-                "task": task,
-                "winner": winner,
-                "winning_solution": solutions[winner],
-                "all_solutions": solutions,
-                "votes": votes,
-                "ideas": [
-                    {
-                        "idea_id": idea.idea_id,
-                        "text": idea.text,
-                        "score": idea.score,
-                        "author": idea.author,
-                        "supporters": idea.supporters
-                    }
-                    for idea in ideas
-                ]
-            }
-            
-            summary = summarizer.summarize_winner(summary_context)
-            
-            print(f"  Summarizer created final summary")
-            print(f"  Winner solution: {winner}")
-            print(f"  Confidence: {summary.get('confidence', 'N/A')}")
-            
-            return summary
-            
-        except ImportError:
-            print("  Warning: MistralSummarizerAgent not available, using basic summary")
-            return {
-                "winner": winner,
-                "winning_solution": solutions[winner],
-                "message": "Summarizer agent not available"
-            }
+
+        # Get API key from one of the agents
+        api_key = list(self.agent_system.values())[0].api_key
+        
+        summarizer = MistralSummarizerAgent(api_key=api_key)
+        
+        # Build context for summarizer
+        summary_context = {
+            "task": task,
+            "winner": winner,
+            "winning_solution": solutions[winner],
+            "all_solutions": solutions,
+            "votes": votes,
+            "ideas": [
+                {
+                    "idea_id": idea.idea_id,
+                    "text": idea.text,
+                    "score": idea.score,
+                    "author": idea.author,
+                    "supporters": idea.supporters
+                }
+                for idea in ideas
+            ]
+        }
+        
+        summary = summarizer.summarize_winner(summary_context)
+        
+        print(f"  Summarizer created final summary")
+        print(f"  Winner solution: {winner}")
+        print(f"  Confidence: {summary.get('confidence', 'N/A')}")
+
 
     # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -826,10 +520,10 @@ class BrainstormSolver:
             lines.append(f"{'='*60}")
             lines.append(f"Solution by: {agent_name}")
             lines.append(f"{'='*60}")
-            lines.append(f"Ideas used: {sol.get('ideas_used', [])}")
-            lines.append(f"Time complexity: {sol.get('time_complexity', 'N/A')}")
-            lines.append(f"Space complexity: {sol.get('space_complexity', 'N/A')}")
-            lines.append(f"Edge cases: {sol.get('edge_cases', [])}")
+            lines.append(f"Ideas used: {str(sol.get('ideas_used', []))}")
+            lines.append(f"Time complexity: {str(sol.get('time_complexity', 'N/A'))}")
+            lines.append(f"Space complexity: {str(sol.get('space_complexity', 'N/A'))}")
+            lines.append(f"Edge cases: {str(sol.get('edge_cases', []))}")
             lines.append(f"\nCode:")
             lines.append(sol.get('solution', 'N/A'))
             lines.append("")
