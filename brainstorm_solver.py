@@ -19,10 +19,11 @@ shared scored memory, and peer review):
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Tuple
+from settings.logger import logger
 from rag_agent import MistralRAGAgent
 from summarizer_agent import MistralSummarizerAgent
-from prompts import ESTIMATE_CONFIDENCE_SYSTEM_PROMPT, BRAINSTORM_SYSTEM_PROMPT, GENERATE_SOLUTION_SYSTEM_PROMPT, REVIEW_SYSTEM_PROMPT, REVISE_SYSTEM_PROMPT, VOTING_SYSTEM_PROMPT
-from schemas import CONFIDENCE_SCHEMA, BRAINSTORM_SCHEMA, CODE_GEN_SCHEMA, REVIEW_SCHEMA, REVISION_SCHEMA, VOTING_SCHEMA
+from settings.prompts import ESTIMATE_CONFIDENCE_SYSTEM_PROMPT, BRAINSTORM_SYSTEM_PROMPT, GENERATE_SOLUTION_SYSTEM_PROMPT, REVIEW_SYSTEM_PROMPT, REVISE_SYSTEM_PROMPT, VOTING_SYSTEM_PROMPT
+from settings.schemas import CONFIDENCE_SCHEMA, BRAINSTORM_SCHEMA, CODE_GEN_SCHEMA, REVIEW_SCHEMA, REVISION_SCHEMA, VOTING_SCHEMA
 import random
 import time
 
@@ -80,44 +81,44 @@ class BrainstormSolver:
             "final_summary": summary_dict                # from summarizer
         }
         """
-        print("\n" + "=" * 70)
-        print("PHASE 1 — Confidence Estimation")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("PHASE 1 — Confidence Estimation")
+        logger.info("=" * 70)
         confidences = self._estimate_confidence(task)
         time.sleep(10)
 
-        print("\n" + "=" * 70)
-        print("PHASE 2 — Core Agent Selection  (threshold = mean)")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("PHASE 2 — Core Agent Selection  (threshold = mean)")
+        logger.info("=" * 70)
         core_agents = self._select_core_agents(confidences)
 
-        print("\n" + "=" * 70)
-        print("PHASE 3 — Brainstorm")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("PHASE 3 — Brainstorm")
+        logger.info("=" * 70)
         ideas = self._brainstorm(task, core_agents, confidences)
         time.sleep(10)
 
-        print("\n" + "=" * 70)
-        print("PHASE 4 — Code Generation")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("PHASE 4 — Code Generation")
+        logger.info("=" * 70)
         solutions = self._generate_solutions(task, core_agents, ideas)
         time.sleep(10)
 
-        print("\n" + "=" * 70)
-        print("PHASE 5 — Peer Review & Revision")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("PHASE 5 — Peer Review & Revision")
+        logger.info("=" * 70)
         final_solutions = self._review_and_revise(task, core_agents, solutions, ideas)
         time.sleep(10)
 
-        print("\n" + "=" * 70)
-        print("PHASE 6 — Voting")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("PHASE 6 — Voting")
+        logger.info("=" * 70)
         votes, winner = self._voting_phase(task, core_agents, final_solutions)
         time.sleep(10)
 
-        print("\n" + "=" * 70)
-        print("PHASE 7 — Final Summary")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("PHASE 7 — Final Summary")
+        logger.info ("=" * 70)
         final_summary = self._create_final_summary(task, winner, final_solutions, votes, ideas)
 
         return {
@@ -164,7 +165,7 @@ class BrainstormSolver:
                     }
                     if confidence_raw in mapping:
                         confidence_value = mapping[confidence_raw]
-                        print(f"  WARNING: {agent_name} returned '{confidence_raw}' → converted to {confidence_value}")
+                        logger.warning(f"  WARNING: {agent_name} returned '{confidence_raw}' → converted to {confidence_value}")
                     else:
                         # Try to parse as number string
                         confidence_value = float(confidence_raw)
@@ -175,14 +176,14 @@ class BrainstormSolver:
                 confidence_value = max(0.0, min(1.0, confidence_value))
                 
             except (ValueError, TypeError) as e:
-                print(f"  ERROR: {agent_name} returned invalid confidence: {result.get('confidence')} → defaulting to 0.5")
+                logger.error(f"  ERROR: {agent_name} returned invalid confidence: {result.get('confidence')} → defaulting to 0.5")
                 confidence_value = 0.5
             
             confidences[agent_name] = confidence_value
             
             # Handle field name variation (reason vs reasoning)
             reason_text = result.get('reason') or result.get('reasoning', 'No reason provided')
-            print(f"  {agent_name:22} {confidence_value:.2f}  — {reason_text}")
+            logger.info(f"  {agent_name:22} {confidence_value:.2f}  — {reason_text}")
 
         return confidences
 
@@ -198,8 +199,8 @@ class BrainstormSolver:
             reverse=True
         )
 
-        print(f"  Mean threshold : {mean:.2f}")
-        print(f"  Core agents    : {[n for n, _ in core]}")
+        logger.info(f"  Mean threshold : {mean:.2f}")
+        logger.info(f"  Core agents    : {[n for n, _ in core]}")
         return [name for name, _ in core]
 
     # ── Phase 3 ─────────────────────────────────────────────────────────
@@ -248,20 +249,20 @@ class BrainstormSolver:
                         score=agent_conf,
                         supporters=[agent_name]
                     ))
-                    print(f"  {agent_name:22} ADD       [{idea_id}] {c['text'][:52]}…")
+                    logger.info(f"  {agent_name:22} ADD       [{idea_id}] {c['text'][:52]}…")
 
                 elif action == "support" and c["idea_id"]:
                     target = self._find_idea(ideas, c["idea_id"])
                     if target:
                         target.score += agent_conf
                         target.supporters.append(agent_name)
-                        print(f"  {agent_name:22} SUPPORT   [{target.idea_id}] score → {target.score:.2f}")
+                        logger.info(f"  {agent_name:22} SUPPORT   [{target.idea_id}] score → {target.score:.2f}")
 
                 elif action == "criticize" and c["idea_id"]:
                     target = self._find_idea(ideas, c["idea_id"])
                     if target:
                         target.critics.append({"agent": agent_name, "reason": c["reason"]})
-                        print(f"  {agent_name:22} CRITICIZE [{target.idea_id}] {c['reason'][:52]}…")
+                        logger.info(f"  {agent_name:22} CRITICIZE [{target.idea_id}] {c['reason'][:52]}…")
 
             # Re-sort so the next agent sees the current ranking
             ideas.sort(key=lambda x: x.score, reverse=True)
@@ -296,8 +297,8 @@ class BrainstormSolver:
             )
 
             solutions[agent_name] = result
-            print(f"  {agent_name:22} ideas={result.get('ideas_used', [])}  "
-                  f"time={result.get('time_complexity', '?')}")
+            logger.info(f"  {agent_name:22} ideas={result.get('ideas_used', [])}  "
+                        f"time={result.get('time_complexity', '?')}")
 
         return solutions
 
@@ -320,7 +321,7 @@ class BrainstormSolver:
         ideas_text = self._format_ideas(ideas)
 
         for round_num in range(1, self.max_review_rounds + 1):
-            print(f"\n  ── Review round {round_num}/{self.max_review_rounds} ──")
+            logger.info(f"  ── Review round {round_num}/{self.max_review_rounds} ──")
 
             # A) Review
             reviews: Dict[str, Dict] = {}
@@ -342,11 +343,11 @@ class BrainstormSolver:
 
                 reviews[agent_name] = result
                 for r in result.get("reviews", []):
-                    print(f"    {agent_name:22}→ {r.get('agent_reviewed', '?'):22} [{r.get('verdict')}]")
+                    logger.info(f"    {agent_name:22}→ {r.get('agent_reviewed', '?'):22} [{r.get('verdict')}]")
 
             # Early stop check
             if self._all_approved(reviews):
-                print(f"  ✓ All solutions approved — stopping early.")
+                logger.info(f"  ✓ All solutions approved — stopping early.")
                 break
 
             # B) Revise
@@ -372,10 +373,10 @@ class BrainstormSolver:
                 summary = result.get("changes_made") or "no changes"
 
                 if not isinstance(summary, str):
-                    print(f"  WARNING: {agent_name} returned changes_made in non-valid form")
+                    logger.warning(f"  WARNING: {agent_name} returned changes_made in non-valid form")
                     summary = ""
 
-                print(f"    {agent_name:22} revised — {summary[:55]}")
+                logger.info(f"    {agent_name:22} revised — {summary[:55]}")
 
         return current
 
@@ -410,7 +411,7 @@ class BrainstormSolver:
             )
             
             all_votes[agent_name] = result.get("votes", [])
-            print(f"  {agent_name:22} cast {len(result.get('votes', []))} votes")
+            logger.info(f"  {agent_name:22} cast {len(result.get('votes', []))} votes")
         
         # Aggregate scores
         score_totals: Dict[str, float] = {name: 0.0 for name in core_agents}
@@ -428,16 +429,16 @@ class BrainstormSolver:
         
         if len(winners) > 1:
             winner = random.choice(winners)
-            print(f"\n  Tie between {winners} with score {max_score:.2f}")
-            print(f"  Random selection: {winner}")
+            logger.info(f"  Tie between {winners} with score {max_score:.2f}")
+            logger.info(f"  Random selection: {winner}")
         else:
             winner = winners[0]
-            print(f"\n  Winner: {winner} with total score {max_score:.2f}")
+            logger.info(f"  Winner: {winner} with total score {max_score:.2f}")
         
-        # Print all scores
-        print("\n  Final scores:")
+        # log all scores
+        logger.info("  Final scores:")
         for name in sorted(score_totals.keys(), key=lambda n: score_totals[n], reverse=True):
-            print(f"    {name:22} {score_totals[name]:6.2f}")
+            logger.info(f"    {name:22} {score_totals[name]:6.2f}")
         
         return all_votes, winner
 
@@ -481,9 +482,9 @@ class BrainstormSolver:
         
         summary = summarizer.summarize_winner(summary_context)
         
-        print(f"  Summarizer created final summary")
-        print(f"  Winner solution: {winner}")
-        print(f"  Confidence: {summary.get('confidence', 'N/A')}")
+        logger.info(f"  Summarizer created final summary")
+        logger.info(f"  Winner solution: {winner}")
+        logger.info(f"  Confidence: {summary.get('confidence', 'N/A')}")
 
 
     # ── Helpers ─────────────────────────────────────────────────────────
