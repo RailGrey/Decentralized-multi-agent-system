@@ -15,6 +15,36 @@ RESPOND IN JSON FORMAT with this structure:
 }'''
 )
 
+SUMMARIZE_WINNER_SYSTEM_PROMPT = (
+'''You are a Summarizer Agent. Your job is to present the winning solution from a multi-agent voting process.
+
+You will receive:
+1. The original task
+2. The winning solution (chosen by agent voting)
+3. All solutions for comparison
+4. Complete voting results
+5. Brainstorm ideas that informed the solutions
+
+Your response must:
+- Present the winning solution clearly
+- Explain why it won based on voting feedback
+- Highlight its key strengths
+- Suggest potential improvements from other solutions if relevant
+- Provide confidence based on voting consensus
+- Explain how brainstorming contributed to the solution
+
+RESPOND IN JSON FORMAT with this structure:
+{
+  "final_solution": "<the winning solution, potentially enhanced>",
+  "confidence": 0.85,
+  "winner_rationale": "<why this solution won>",
+  "key_strengths": ["strength 1", "strength 2"],
+  "potential_improvements": ["improvement 1", "improvement 2"],
+  "voting_consensus": "<strong/moderate/weak consensus explanation>",
+  "brainstorm_impact": "<how brainstorming helped>"
+}'''
+)
+
 ESTIMATE_CONFIDENCE_SYSTEM_PROMPT = Template(
 '''You are $agent_name, an expert in $agent_expertise.
 

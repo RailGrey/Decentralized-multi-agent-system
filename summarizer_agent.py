@@ -5,6 +5,7 @@ Summarizer Agent using Mistral API to combine multiple agent outputs.
 from mistralai import Mistral
 from typing import List, Dict, Any
 from settings.logger import logger
+from settings.prompts import SUMMARIZE_WINNER_SYSTEM_PROMPT
 import json
 
 
@@ -90,33 +91,7 @@ class MistralSummarizerAgent:
         formatted_context = self._build_winner_context(context)
         
         # Create system prompt
-        system_prompt = """You are a Summarizer Agent. Your job is to present the winning solution from a multi-agent voting process.
-
-You will receive:
-1. The original task
-2. The winning solution (chosen by agent voting)
-3. All solutions for comparison
-4. Complete voting results
-5. Brainstorm ideas that informed the solutions
-
-Your response must:
-- Present the winning solution clearly
-- Explain why it won based on voting feedback
-- Highlight its key strengths
-- Suggest potential improvements from other solutions if relevant
-- Provide confidence based on voting consensus
-- Explain how brainstorming contributed to the solution
-
-RESPOND IN JSON FORMAT with this structure:
-{
-  "final_solution": "<the winning solution, potentially enhanced>",
-  "confidence": 0.85,
-  "winner_rationale": "<why this solution won>",
-  "key_strengths": ["strength 1", "strength 2"],
-  "potential_improvements": ["improvement 1", "improvement 2"],
-  "voting_consensus": "<strong/moderate/weak consensus explanation>",
-  "brainstorm_impact": "<how brainstorming helped>"
-}"""
+        system_prompt = SUMMARIZE_WINNER_SYSTEM_PROMPT
         
         user_prompt = f"""{formatted_context}
 
@@ -203,79 +178,6 @@ Analyze the winning solution and voting results, then provide a comprehensive su
             lines.append(f"  Supporters: {', '.join(idea.get('supporters', []))}")
         
         return "\n".join(lines)
-    
-    def summarize(self, task: str, agent_results: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Summarize multiple agent outputs into a single coherent response.
-        
-        Args:
-            task: Original task description
-            agent_results: Results from multi-agent solver
-            
-        Returns:
-            Structured summary with final solution
-        """
-        # Extract all responses and solutions
-        responses = agent_results.get('responses', [])
-        
-        # Build context from all agent interactions
-        context = self._build_context(task, agent_results, responses)
-        
-        # Create system prompt
-        system_prompt = """You are a Summarizer Agent. Your job is to analyze outputs from multiple specialized agents and create a single, comprehensive solution.
-
-You will receive:
-1. The original task
-2. All agent responses and their actions
-3. Final solution(s) from executing agent(s)
-
-Your response must:
-- Combine insights from all agents into a coherent solution
-- Maintain technical accuracy from specialized agents
-- Provide a confidence score based on agent agreements and solution quality
-- Highlight key insights from different agents
-- Summarize each agent's contribution
-
-RESPOND IN JSON FORMAT with this structure:
-{
-  "final_solution": "<unified comprehensive solution>",
-  "confidence": 0.85,
-  "key_insights": ["insight 1", "insight 2"],
-  "agent_contributions": {
-    "Agent1": "contribution description",
-    "Agent2": "contribution description"
-  }
-}"""
-        
-        user_prompt = f"""{context}
-
-Analyze all the agent interactions and outputs above, then provide a comprehensive summary with:
-1. A unified final solution that combines the best insights
-2. An overall confidence score
-3. Key insights from the process
-4. Summary of each agent's contribution"""
-        
-        # Get structured response from Mistral
-        response = self.client.chat.complete(
-            model=self.chat_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            stream=False,
-            response_format={
-                "type": "json_object",
-                "json_schema": {
-                    "name": "summary_response",
-                    "schema": self.response_schema,
-                    "strict": True
-                }
-            }
-        )
-        
-        # Parse and return the structured response
-        result = json.loads(response.choices[0].message.content)
-        return result
     
     def _build_context(self, task: str, agent_results: Dict[str, Any], responses: List[Dict[str, Any]]) -> str:
         """Build context string from all agent interactions."""
