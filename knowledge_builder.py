@@ -6,6 +6,7 @@ This avoids searching the dataset every time agents are initialized.
 import json
 import os
 from pathlib import Path
+from settings.logger import logger
 from typing import List, Dict, Any
 from tqdm import tqdm
 
@@ -90,11 +91,11 @@ def save_agent_knowledge(
     
     # Check if already exists
     if os.path.exists(filepath):
-        print(f"Knowledge already exists for {agent_name} at {filepath}")
+        logger.info(f"Knowledge already exists for {agent_name} at {filepath}")
         return filepath
     
     # Extract problems
-    print(f"\nExtracting knowledge for {agent_name} (tag: {cf_tag})...")
+    logger.info(f"\nExtracting knowledge for {agent_name} (tag: {cf_tag})...")
     problems = get_problems(dataset, cf_tag, count, language)
     
     # Format for agent
@@ -114,7 +115,7 @@ def save_agent_knowledge(
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(knowledge_items, f, indent=2, ensure_ascii=False)
     
-    print(f"✓ Saved {len(knowledge_items)} problems to {filepath}")
+    logger.info(f"✓ Saved {len(knowledge_items)} problems to {filepath}")
     
     return filepath
 
@@ -139,9 +140,9 @@ def build_all_agent_knowledge(
     Returns:
         Dict mapping agent name to filepath
     """
-    print("=" * 70)
-    print("BUILDING AGENT KNOWLEDGE BASE")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("BUILDING AGENT KNOWLEDGE BASE")
+    logger.info("=" * 70)
     
     filepaths = {}
     
@@ -155,12 +156,12 @@ def build_all_agent_knowledge(
         )
         filepaths[config['name']] = filepath
     
-    print("\n" + "=" * 70)
-    print("KNOWLEDGE BASE BUILD COMPLETE")
-    print("=" * 70)
-    print(f"Total agents: {len(filepaths)}")
-    print(f"Output directory: {output_dir}")
-    print(f"Problems per agent: {count}")
+    logger.info("\n" + "=" * 70)
+    logger.info("KNOWLEDGE BASE BUILD COMPLETE")
+    logger.info("=" * 70)
+    logger.info(f"Total agents: {len(filepaths)}")
+    logger.info(f"Output directory: {output_dir}")
+    logger.info(f"Problems per agent: {count}")
     
     return filepaths
 

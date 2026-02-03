@@ -428,37 +428,3 @@ def summarize_agent_results(
         summarizer.print_summary(summary)
     
     return summary
-
-
-# Example usage
-if __name__ == "__main__":
-    # Example with mock data
-    task = "Find the shortest path in a graph"
-    
-    # Mock agent results
-    agent_results = {
-        "success": True,
-        "final_agent": "Graph Agent",
-        "solution": "Use Dijkstra's algorithm...",
-        "confidence": 0.9,
-        "responses": [
-            {
-                "agent": "Math Agent",
-                "action": "Pass",
-                "pass_to": "Graph Agent",
-                "iteration": 1
-            },
-            {
-                "agent": "Graph Agent",
-                "action": "Execute",
-                "confidence": 0.9,
-                "solution": "Use Dijkstra's algorithm...",
-                "iteration": 2
-            }
-        ],
-        "iterations": 2
-    }
-    
-    # Summarize
-    # summary = summarize_agent_results("your-api-key", task, agent_results)
-    pass

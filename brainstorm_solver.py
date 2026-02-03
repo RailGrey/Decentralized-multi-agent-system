@@ -58,10 +58,12 @@ class BrainstormSolver:
     def __init__(
         self,
         agent_system: Dict[str, MistralRAGAgent],
-        max_review_rounds: int = 3
+        max_review_rounds: int = 3,
+        sleep_between_phases: int = 20
     ):
         self.agent_system = agent_system
         self.max_review_rounds = max_review_rounds
+        self.sleep_between_phases = sleep_between_phases
 
     # ── Main entry point ────────────────────────────────────────────────
 
@@ -85,7 +87,7 @@ class BrainstormSolver:
         logger.info("PHASE 1 — Confidence Estimation")
         logger.info("=" * 70)
         confidences = self._estimate_confidence(task)
-        time.sleep(10)
+        time.sleep(self.sleep_between_phases)
 
         logger.info("=" * 70)
         logger.info("PHASE 2 — Core Agent Selection  (threshold = mean)")
@@ -96,25 +98,25 @@ class BrainstormSolver:
         logger.info("PHASE 3 — Brainstorm")
         logger.info("=" * 70)
         ideas = self._brainstorm(task, core_agents, confidences)
-        time.sleep(10)
+        time.sleep(self.sleep_between_phases)
 
         logger.info("=" * 70)
         logger.info("PHASE 4 — Code Generation")
         logger.info("=" * 70)
         solutions = self._generate_solutions(task, core_agents, ideas)
-        time.sleep(10)
+        time.sleep(self.sleep_between_phases)
 
         logger.info("=" * 70)
         logger.info("PHASE 5 — Peer Review & Revision")
         logger.info("=" * 70)
         final_solutions = self._review_and_revise(task, core_agents, solutions, ideas)
-        time.sleep(10)
+        time.sleep(self.sleep_between_phases)
 
         logger.info("=" * 70)
         logger.info("PHASE 6 — Voting")
         logger.info("=" * 70)
         votes, winner = self._voting_phase(task, core_agents, final_solutions)
-        time.sleep(10)
+        time.sleep(self.sleep_between_phases)
 
         logger.info("=" * 70)
         logger.info("PHASE 7 — Final Summary")
@@ -345,6 +347,8 @@ class BrainstormSolver:
                 for r in result.get("reviews", []):
                     logger.info(f"    {agent_name:22}→ {r.get('agent_reviewed', '?'):22} [{r.get('verdict')}]")
 
+            time.sleep(self.sleep_between_phases)
+
             # Early stop check
             if self._all_approved(reviews):
                 logger.info(f"  ✓ All solutions approved — stopping early.")
@@ -377,6 +381,8 @@ class BrainstormSolver:
                     summary = ""
 
                 logger.info(f"    {agent_name:22} revised — {summary[:55]}")
+
+            time.sleep(self.sleep_between_phases)
 
         return current
 
