@@ -12,6 +12,7 @@ A multi-agent system that uses Retrieval-Augmented Generation (RAG) and collabor
 - [Project Structure](#project-structure)
 - [RAG Agent Architecture](#rag-agent-architecture)
 - [Brainstorm Solver Pipeline](#brainstorm-solver-pipeline)
+- [Quick Start](#quick-start)
 
 ---
 
@@ -660,3 +661,7 @@ final implementation toward the optimal approach.
 ```
 
 ---
+
+## Quick Start
+
+To see code in action please visit main.py or demo.ipynb
