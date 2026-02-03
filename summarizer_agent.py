@@ -4,6 +4,7 @@ Summarizer Agent using Mistral API to combine multiple agent outputs.
 
 from mistralai import Mistral
 from typing import List, Dict, Any
+from settings.logger import logger
 import json
 
 
@@ -331,100 +332,74 @@ Analyze all the agent interactions and outputs above, then provide a comprehensi
         
         return context
     
-    def print_summary(self, summary: Dict[str, Any]):
+    @staticmethod
+    def print_summary(summary: Dict[str, Any]):
         """Pretty print the summary."""
-        print("\n" + "="*70)
-        print("FINAL SUMMARY")
-        print("="*70)
+        logger.info("="*70)
+        logger.info("FINAL SUMMARY")
+        logger.info("="*70)
         
         # Check if this is winner-focused summary or old format
         if 'winner_rationale' in summary:
             # New winner-focused format
-            print(f"\nConfidence: {summary.get('confidence', 'N/A')}")
+            logger.info(f"Confidence: {summary.get('confidence', 'N/A')}")
             
-            print("\n" + "-"*70)
-            print("WHY THIS SOLUTION WON:")
-            print("-"*70)
-            print(summary.get('winner_rationale', 'No rationale provided'))
+            logger.info("-"*70)
+            logger.info("WHY THIS SOLUTION WON:")
+            logger.info("-"*70)
+            logger.info(summary.get('winner_rationale', 'No rationale provided'))
             
-            print("\n" + "-"*70)
-            print("FINAL SOLUTION:")
-            print("-"*70)
-            print(summary.get('final_solution', 'No solution provided'))
+            logger.info("-"*70)
+            logger.info("FINAL SOLUTION:")
+            logger.info("-"*70)
+            logger.info(summary.get('final_solution', 'No solution provided'))
             
             if 'key_strengths' in summary and summary['key_strengths']:
-                print("\n" + "-"*70)
-                print("KEY STRENGTHS:")
-                print("-"*70)
+                logger.info("-"*70)
+                logger.info("KEY STRENGTHS:")
+                logger.info("-"*70)
                 for i, strength in enumerate(summary['key_strengths'], 1):
-                    print(f"{i}. {strength}")
+                    logger.info(f"{i}. {strength}")
             
             if 'potential_improvements' in summary and summary['potential_improvements']:
-                print("\n" + "-"*70)
-                print("POTENTIAL IMPROVEMENTS:")
-                print("-"*70)
+                logger.info("-"*70)
+                logger.info("POTENTIAL IMPROVEMENTS:")
+                logger.info("-"*70)
                 for i, improvement in enumerate(summary['potential_improvements'], 1):
-                    print(f"{i}. {improvement}")
+                    logger.info(f"{i}. {improvement}")
             
             if 'voting_consensus' in summary:
-                print("\n" + "-"*70)
-                print("VOTING CONSENSUS:")
-                print("-"*70)
-                print(summary['voting_consensus'])
+                logger.info("-"*70)
+                logger.info("VOTING CONSENSUS:")
+                logger.info("-"*70)
+                logger.info(summary['voting_consensus'])
             
             if 'brainstorm_impact' in summary:
-                print("\n" + "-"*70)
-                print("BRAINSTORM IMPACT:")
-                print("-"*70)
-                print(summary['brainstorm_impact'])
+                logger.info("-"*70)
+                logger.info("BRAINSTORM IMPACT:")
+                logger.info("-"*70)
+                logger.info(summary['brainstorm_impact'])
         else:
             # Old format (backward compatibility)
-            print(f"\nOverall Confidence: {summary.get('confidence', 'N/A')}")
+            logger.info(f"Overall Confidence: {summary.get('confidence', 'N/A')}")
             
-            print("\n" + "-"*70)
-            print("FINAL SOLUTION:")
-            print("-"*70)
-            print(summary.get('final_solution', 'No solution provided'))
+            logger.info("-"*70)
+            logger.info("FINAL SOLUTION:")
+            logger.info("-"*70)
+            logger.info(summary.get('final_solution', 'No solution provided'))
             
             if 'key_insights' in summary and summary['key_insights']:
-                print("\n" + "-"*70)
-                print("KEY INSIGHTS:")
-                print("-"*70)
+                logger.info("-"*70)
+                logger.info("KEY INSIGHTS:")
+                logger.info("-"*70)
                 for i, insight in enumerate(summary['key_insights'], 1):
-                    print(f"{i}. {insight}")
+                    logger.info(f"{i}. {insight}")
             
             if 'agent_contributions' in summary and summary['agent_contributions']:
-                print("\n" + "-"*70)
-                print("AGENT CONTRIBUTIONS:")
-                print("-"*70)
+                logger.info("-"*70)
+                logger.info("AGENT CONTRIBUTIONS:")
+                logger.info("-"*70)
                 for agent, contribution in summary['agent_contributions'].items():
-                    print(f"• {agent}: {contribution}")
+                    logger.info(f"• {agent}: {contribution}")
         
-        print("\n" + "="*70)
-
-
-def summarize_agent_results(
-    api_key: str,
-    task: str,
-    agent_results: Dict[str, Any],
-    print_output: bool = True
-) -> Dict[str, Any]:
-    """
-    Convenience function to summarize multi-agent results.
-    
-    Args:
-        api_key: Mistral API key
-        task: Original task description
-        agent_results: Results from multi-agent solver
-        print_output: Whether to print the summary
-        
-    Returns:
-        Structured summary dictionary
-    """
-    summarizer = MistralSummarizerAgent(api_key=api_key)
-    summary = summarizer.summarize(task, agent_results)
-    
-    if print_output:
-        summarizer.print_summary(summary)
-    
-    return summary
+        logger.info("="*70)

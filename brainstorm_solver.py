@@ -491,6 +491,8 @@ class BrainstormSolver:
         logger.info(f"  Summarizer created final summary")
         logger.info(f"  Winner solution: {winner}")
         logger.info(f"  Confidence: {summary.get('confidence', 'N/A')}")
+        
+        summarizer.print_summary(summary)
 
         return summary
 
