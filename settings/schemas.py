@@ -1,4 +1,4 @@
-# ─── Response Schemas (Mistral strict-mode compatible) ──────────────────────
+# ─── Response Schemas ──────────────────────
 # Every field that may be semantically empty is still *present* in the output
 # (set to "" or []).  This satisfies strict: True.
 

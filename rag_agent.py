@@ -5,6 +5,7 @@ Uses Qdrant for vector storage and retrieval.
 
 from mistralai import Mistral
 from typing import List, Dict, Any, Optional
+from settings.prompts import SOLO_AGENT_SYSTEM_PROMPT
 import numpy as np
 import json
 import hashlib
@@ -323,18 +324,10 @@ class MistralRAGAgent:
         context = self.retrieve_context(task)
         
         # Build system prompt for direct solving
-        system_prompt = f"""You are {self.name}, an expert in {self.expertise}.
-
-Solve the given coding task directly. Provide a complete solution.
-
-Use the provided context to inform your solution.
-
-RESPOND IN JSON FORMAT with this structure:
-{{
-  "solution": "<complete, runnable code>",
-  "description": "<clear explanation of approach and how it works>",
-  "confidence": 0.85
-}}"""
+        system_prompt = SOLO_AGENT_SYSTEM_PROMPT.substitute(
+            agent_name=self.name,
+            agent_expertise=self.expertise
+        )
         
         user_prompt = f"{context}\n\nTask: {task}\n\nProvide your solution."
         

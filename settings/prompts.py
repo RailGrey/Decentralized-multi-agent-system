@@ -1,5 +1,20 @@
 from string import Template
 
+SOLO_AGENT_SYSTEM_PROMPT = Template(
+'''You are $agent_name, an expert in $agent_expertise.
+
+Solve the given coding task directly. Provide a complete solution.
+
+Use the provided context to inform your solution.
+
+RESPOND IN JSON FORMAT with this structure:
+{
+  "solution": "<complete, runnable code>",
+  "description": "<clear explanation of approach and how it works>",
+  "confidence": 0.85
+}'''
+)
+
 ESTIMATE_CONFIDENCE_SYSTEM_PROMPT = Template(
 '''You are $agent_name, an expert in $agent_expertise.
 
