@@ -1,5 +1,6 @@
 """
 Single RAG-based AI Agent using Mistral API with structured action-based responses.
+Uses Qdrant for vector storage and retrieval.
 """
 
 from mistralai import Mistral
@@ -9,15 +10,8 @@ import json
 import hashlib
 import os
 from pathlib import Path
-from dataclasses import dataclass
-
-
-@dataclass
-class Document:
-    """Represents a document in the knowledge base."""
-    content: str
-    metadata: Dict[str, Any]
-    embedding: Optional[List[float]] = None
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 
 
 class MistralRAGAgent:
@@ -31,7 +25,10 @@ class MistralRAGAgent:
         available_agents: List[str] = None,
         chat_model: str = "mistral-small-latest",
         embedding_model: str = "mistral-embed",
-        cache_dir: str = None
+        cache_dir: str = None,
+        qdrant_path: str = "./qdrant_storage",
+        qdrant_url: str = None,
+        embedding_dim: int = 1024
     ):
         """
         Initialize the Mistral RAG Agent.
@@ -44,6 +41,9 @@ class MistralRAGAgent:
             chat_model: Model for chat completion
             embedding_model: Model for embeddings
             cache_dir: Directory to cache embeddings. If None, no caching is used.
+            qdrant_path: Path for local Qdrant storage (used if qdrant_url is None)
+            qdrant_url: URL for Qdrant server (e.g., "http://localhost:6333")
+            embedding_dim: Dimension of embeddings (1024 for mistral-embed)
         """
         self.name = name
         self.expertise = expertise
@@ -51,7 +51,6 @@ class MistralRAGAgent:
         self.chat_model = chat_model
         self.embedding_model = embedding_model
         self.available_agents = available_agents or []
-        self.documents: List[Document] = []
         self.client = Mistral(api_key=api_key)
         self.response_schema = self._build_response_schema()
         
@@ -59,6 +58,52 @@ class MistralRAGAgent:
         self.cache_dir = cache_dir
         if self.cache_dir:
             Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Qdrant setup
+        self.collection_name = f"{name.replace(' ', '_').lower()}_knowledge"
+        self.embedding_dim = embedding_dim
+        
+        # Initialize Qdrant client
+        if qdrant_url:
+            self.qdrant_client = QdrantClient(url=qdrant_url)
+        else:
+            self.qdrant_client = QdrantClient(path=qdrant_path)
+        
+        # Create collection if it doesn't exist
+        self._initialize_collection()
+        
+        # Counter for point IDs
+        self._point_counter = self._get_max_point_id() + 1
+    
+    def _initialize_collection(self):
+        """Initialize Qdrant collection if it doesn't exist."""
+        collections = self.qdrant_client.get_collections().collections
+        collection_names = [col.name for col in collections]
+        
+        if self.collection_name not in collection_names:
+            self.qdrant_client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(
+                    size=self.embedding_dim,
+                    distance=Distance.COSINE
+                )
+            )
+    
+    def _get_max_point_id(self) -> int:
+        """Get the maximum point ID in the collection."""
+        try:
+            # Scroll through all points to find max ID
+            points, _ = self.qdrant_client.scroll(
+                collection_name=self.collection_name,
+                limit=10000,
+                with_payload=False,
+                with_vectors=False
+            )
+            if points:
+                return max(point.id for point in points)
+            return 0
+        except Exception:
+            return 0
     
     def _compute_hash(self, text: str) -> str:
         """Compute SHA256 hash of text for cache filename."""
@@ -124,52 +169,31 @@ class MistralRAGAgent:
         return embedding
     
     def _build_response_schema(self) -> Dict[str, Any]:
-        """Build JSON schema for structured responses based on action type."""
+        """Build JSON schema for single-agent solve (when not part of multi-agent system)."""
         return {
             "type": "object",
             "properties": {
-                "action": {
+                "solution": {
                     "type": "string",
-                    "enum": ["Pass", "Split", "Execute"],
-                    "description": "Action to take: Pass to another agent, Split into subtasks, or Execute the solution"
+                    "description": "Complete, runnable solution code"
                 },
-                "pass_to": {
+                "description": {
                     "type": "string",
-                    "description": "Agent name to pass the task to (only for Pass action)"
-                },
-                "task1": {
-                    "type": "string",
-                    "description": "First subtask (only for Split action)"
-                },
-                "task2": {
-                    "type": "string",
-                    "description": "Second subtask (only for Split action)"
-                },
-                "task1_to": {
-                    "type": "string",
-                    "description": "Agent to handle task1 (only for Split action)"
-                },
-                "task2_to": {
-                    "type": "string",
-                    "description": "Agent to handle task2 (only for Split action)"
+                    "description": "Clear explanation of the approach and how it works"
                 },
                 "confidence": {
                     "type": "number",
                     "minimum": 0.0,
                     "maximum": 1.0,
-                    "description": "Confidence level in the solution (only for Execute action)"
-                },
-                "solution": {
-                    "type": "string",
-                    "description": "Detailed solution with code and explanation (only for Execute action)"
+                    "description": "Your confidence in this solution (0.0-1.0)"
                 }
             },
-            "required": ["action"],
+            "required": ["solution", "description", "confidence"],
             "additionalProperties": False
         }
     
     def add_knowledge(self, content: str, metadata: Dict[str, Any] = None):
-        """Add knowledge to the agent's knowledge base."""
+        """Add knowledge to the agent's knowledge base (Qdrant)."""
         # Get embedding (from cache or API)
         embedding = self._get_embedding(content)
         
@@ -177,41 +201,61 @@ class MistralRAGAgent:
         if self.cache_dir and metadata:
             self._save_cached_embedding(content, embedding, metadata)
         
-        doc = Document(
-            content=content,
-            metadata=metadata or {},
-            embedding=embedding
+        # Prepare metadata for Qdrant
+        payload = {
+            "content": content,
+            "agent_name": self.name,
+            **(metadata or {})
+        }
+        
+        # Add to Qdrant
+        point_id = self._point_counter
+        self._point_counter += 1
+        
+        self.qdrant_client.upsert(
+            collection_name=self.collection_name,
+            points=[
+                PointStruct(
+                    id=point_id,
+                    vector=embedding,
+                    payload=payload
+                )
+            ]
         )
-        self.documents.append(doc)
-    
-    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
-        """Calculate cosine similarity between two vectors."""
-        vec1_np = np.array(vec1)
-        vec2_np = np.array(vec2)
-        return np.dot(vec1_np, vec2_np) / (np.linalg.norm(vec1_np) * np.linalg.norm(vec2_np))
     
     def retrieve_context(self, query: str, top_k: int = 3) -> str:
-        """Retrieve relevant context from knowledge base using semantic search."""
-        if not self.documents:
+        """Retrieve relevant context from knowledge base using Qdrant semantic search."""
+        # Check if collection has any points
+        try:
+            collection_info = self.qdrant_client.get_collection(self.collection_name)
+            if collection_info.points_count == 0:
+                return ""
+        except Exception:
             return ""
         
         # Get query embedding (from cache or API)
         query_embedding = self._get_embedding(query)
         
-        # Calculate similarities
-        similarities = []
-        for doc in self.documents:
-            sim = self._cosine_similarity(query_embedding, doc.embedding)
-            similarities.append((sim, doc))
+        # Search in Qdrant
+        search_results = self.qdrant_client.query_points(
+            collection_name=self.collection_name,
+            query=query_embedding,
+            limit=top_k
+        )
         
-        # Sort by similarity and get top_k
-        similarities.sort(reverse=True, key=lambda x: x[0])
-        top_docs = [doc for _, doc in similarities[:top_k]]
+        if not search_results:
+            return ""
         
-        # Format context
+        # Format context with both description and solution
         context = "Relevant knowledge:\n\n"
-        for i, doc in enumerate(top_docs, 1):
-            context += f"[{i}] {doc.content}\n\n"
+        for i, hit in enumerate(search_results.points, 1):
+            content = hit.payload.get("content", "")
+            solution = hit.payload.get("solution", "")
+            
+            context += f"[{i}] Problem:\n{content}\n"
+            if solution:
+                context += f"\nSolution:\n{solution}\n"
+            context += "\n"
         
         return context
     
@@ -260,61 +304,39 @@ class MistralRAGAgent:
 
     def solve(self, task: str) -> Dict[str, Any]:
         """
-        Solve a coding task using RAG with structured action-based response.
+        Solve a coding task directly (single-agent mode).
+        
+        This method is for standalone use when the agent is NOT part of a multi-agent system.
+        For multi-agent systems, use the BrainstormSolver or call() method instead.
         
         Args:
             task: The coding task description
             
         Returns:
-            Structured response dictionary with action and relevant fields
+            {
+                "solution": "<complete code>",
+                "description": "<explanation>",
+                "confidence": 0.85
+            }
         """
         # Retrieve relevant context
         context = self.retrieve_context(task)
         
-        # Build system prompt with action instructions
-        agents_list = ", ".join(self.available_agents) if self.available_agents else "none"
+        # Build system prompt for direct solving
         system_prompt = f"""You are {self.name}, an expert in {self.expertise}.
 
-You must respond with a structured JSON object containing one of three actions:
+Solve the given coding task directly. Provide a complete solution.
 
-1. **Pass**: If the task is outside your expertise, pass it to another agent
-   - Required fields: "action": "Pass", "pass_to": "<agent_name>"
-   - Available agents: {agents_list}
+Use the provided context to inform your solution.
 
-2. **Split**: If the task requires multiple areas of expertise, split it into subtasks
-   - Required fields: "action": "Split", "task1": "<description>", "task2": "<description>", "task1_to": "<agent_name>", "task2_to": "<agent_name>"
-   - Available agents: {agents_list}
-
-3. **Execute**: If you can solve the task yourself
-   - Required fields: "action": "Execute", "confidence": <0.0-1.0>, "solution": "<detailed solution with code>"
-
-Use the provided context to inform your decision.
-
-RESPOND IN JSON FORMAT. Examples:
-
-Pass example:
+RESPOND IN JSON FORMAT with this structure:
 {{
-  "action": "Pass",
-  "pass_to": "Graph Agent"
-}}
-
-Split example:
-{{
-  "action": "Split",
-  "task1": "Parse the input",
-  "task2": "Compute shortest path",
-  "task1_to": "String Agent",
-  "task2_to": "Graph Agent"
-}}
-
-Execute example:
-{{
-  "action": "Execute",
-  "confidence": 0.85,
-  "solution": "def solve(...):\\n    ..."
+  "solution": "<complete, runnable code>",
+  "description": "<clear explanation of approach and how it works>",
+  "confidence": 0.85
 }}"""
         
-        user_prompt = f"{context}\nTask: {task}\n\nAnalyze this task and provide your response in the required JSON format."
+        user_prompt = f"{context}\n\nTask: {task}\n\nProvide your solution."
         
         # Get structured response from Mistral
         response = self.client.chat.complete(
@@ -327,7 +349,7 @@ Execute example:
             response_format={
                 "type": "json_object",
                 "json_schema": {
-                    "name": "agent_response",
+                    "name": "direct_solution",
                     "schema": self.response_schema,
                     "strict": True
                 }
@@ -337,3 +359,76 @@ Execute example:
         # Parse and return the structured response
         result = json.loads(response.choices[0].message.content)
         return result
+    
+    # ── Qdrant-specific methods ─────────────────────────────────────────
+    
+    def search_by_metadata(
+        self,
+        query: str,
+        metadata_filter: Dict[str, Any],
+        top_k: int = 3
+    ) -> str:
+        """
+        Search with metadata filtering.
+        
+        Args:
+            query: Search query text
+            metadata_filter: Dict of metadata field -> value to filter by
+            top_k: Number of results to return
+            
+        Returns:
+            Formatted context string
+        """
+        query_embedding = self._get_embedding(query)
+        
+        # Build Qdrant filter
+        conditions = []
+        for key, value in metadata_filter.items():
+            conditions.append(
+                FieldCondition(
+                    key=key,
+                    match=MatchValue(value=value)
+                )
+            )
+        
+        search_results = self.qdrant_client.search(
+            collection_name=self.collection_name,
+            query_vector=query_embedding,
+            query_filter=Filter(must=conditions) if conditions else None,
+            limit=top_k
+        )
+        
+        if not search_results:
+            return ""
+        
+        context = "Relevant knowledge:\n\n"
+        for i, hit in enumerate(search_results, 1):
+            content = hit.payload.get("content", "")
+            context += f"[{i}] {content}\n\n"
+        
+        return context
+    
+    def get_all_knowledge(self) -> List[Dict[str, Any]]:
+        """Retrieve all knowledge from Qdrant collection."""
+        points, _ = self.qdrant_client.scroll(
+            collection_name=self.collection_name,
+            limit=10000,
+            with_payload=True,
+            with_vectors=False
+        )
+        
+        return [point.payload for point in points]
+    
+    def clear_knowledge(self):
+        """Clear all knowledge from the collection."""
+        self.qdrant_client.delete_collection(self.collection_name)
+        self._initialize_collection()
+        self._point_counter = 1
+    
+    def get_knowledge_count(self) -> int:
+        """Get the number of knowledge items stored."""
+        try:
+            collection_info = self.qdrant_client.get_collection(self.collection_name)
+            return collection_info.points_count
+        except Exception:
+            return 0

@@ -486,6 +486,8 @@ class BrainstormSolver:
         logger.info(f"  Winner solution: {winner}")
         logger.info(f"  Confidence: {summary.get('confidence', 'N/A')}")
 
+        return summary
+
 
     # ── Helpers ─────────────────────────────────────────────────────────
 

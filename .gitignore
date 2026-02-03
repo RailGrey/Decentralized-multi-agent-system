@@ -2,3 +2,6 @@ __pycache__
 
 dataset
 env/credentials.env
+embedding_cache
+agent_knowledge
+qdrant_storage
