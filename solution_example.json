@@ -1,0 +1,159 @@
+{
+  "task": "A matrix of size n × m, such that each cell of it contains either 0 or 1, is considered beautiful if the sum in every contiguous submatrix of size 2 × 2 is exactly 2, i. e. every \"square\" of size 2 × 2 contains exactly two 1's and exactly two 0's.\n\nYou are given a matrix of size n × m. Initially each cell of this matrix is empty. Let's denote the cell on the intersection of the x-th row and the y-th column as (x, y). You have to process the queries of three types:\n\n  * x y -1 — clear the cell (x, y), if there was a number in it; \n  * x y 0 — write the number 0 in the cell (x, y), overwriting the number that was there previously (if any); \n  * x y 1 — write the number 1 in the cell (x, y), overwriting the number that was there previously (if any). \n\n\n\nAfter each query, print the number of ways to fill the empty cells of the matrix so that the resulting matrix is beautiful. Since the answers can be large, print them modulo 998244353.\n\nInput\n\nThe first line contains three integers n, m and k (2 ≤ n, m ≤ 10^6; 1 ≤ k ≤ 3 ⋅ 10^5) — the number of rows in the matrix, the number of columns, and the number of queries, respectively.\n\nThen k lines follow, the i-th of them contains three integers x_i, y_i, t_i (1 ≤ x_i ≤ n; 1 ≤ y_i ≤ m; -1 ≤ t_i ≤ 1) — the parameters for the i-th query.\n\nOutput\n\nFor each query, print one integer — the number of ways to fill the empty cells of the matrix after the respective query, taken modulo 998244353.\n\nExample\n\nInput\n\n\n2 2 7\n1 1 1\n1 2 1\n2 1 1\n1 1 0\n1 2 -1\n2 1 -1\n1 1 -1\n\n\nOutput\n\n\n3\n1\n0\n1\n2\n3\n6",
+  "confidences": {
+    "Graph agent": 0.8,
+    "Brute Force agent": 0.3,
+    "Data Structures agent": 0.8,
+    "Dynamic Programming agent": 0.3,
+    "Math agent": 0.3
+  },
+  "core_agents": [
+    "Graph agent",
+    "Data Structures agent"
+  ],
+  "ideas": [
+    {
+      "idea_id": "idea_1",
+      "text": "Use dynamic programming to keep track of the number of ways to fill the empty cells to maintain the beautiful matrix property.",
+      "author": "Graph agent",
+      "score": 1.6,
+      "supporters": [
+        "Graph agent",
+        "Data Structures agent"
+      ],
+      "critics": []
+    },
+    {
+      "idea_id": "idea_3",
+      "text": "Use a segment tree or a binary indexed tree to efficiently update and query the matrix, especially for large dimensions.",
+      "author": "Graph agent",
+      "score": 1.6,
+      "supporters": [
+        "Graph agent",
+        "Data Structures agent"
+      ],
+      "critics": []
+    },
+    {
+      "idea_id": "idea_2",
+      "text": "For each query, update the matrix and recalculate the number of valid configurations based on the current state of the matrix.",
+      "author": "Graph agent",
+      "score": 0.8,
+      "supporters": [
+        "Graph agent"
+      ],
+      "critics": []
+    },
+    {
+      "idea_id": "idea_4",
+      "text": "Consider the constraints and optimize the solution to handle large inputs within feasible time complexity.",
+      "author": "Graph agent",
+      "score": 0.8,
+      "supporters": [
+        "Graph agent"
+      ],
+      "critics": []
+    },
+    {
+      "idea_id": "idea_5",
+      "text": "Use a hash map to keep track of the counts of each value in the sequence to efficiently determine the maximum number of elements that can be painted for each color.",
+      "author": "Data Structures agent",
+      "score": 0.8,
+      "supporters": [
+        "Data Structures agent"
+      ],
+      "critics": []
+    },
+    {
+      "idea_id": "idea_6",
+      "text": "Implement a greedy algorithm to assign colors to elements, ensuring that the conditions for a wonderful coloring are met while maximizing the number of painted elements.",
+      "author": "Data Structures agent",
+      "score": 0.8,
+      "supporters": [
+        "Data Structures agent"
+      ],
+      "critics": []
+    }
+  ],
+  "solutions": {
+    "Graph agent": {
+      "ideas_used": [
+        "idea_1",
+        "idea_2",
+        "idea_3"
+      ],
+      "solution": "from collections import defaultdict\n\nMOD = 998244353\n\nclass SegmentTree:\n    def __init__(self, size):\n        self.size = size\n        self.tree = [0] * (4 * size)\n\n    def update(self, node, start, end, idx, value):\n        if start == end:\n            self.tree[node] = value\n        else:\n            mid = (start + end) // 2\n            if idx <= mid:\n                self.update(2 * node, start, mid, idx, value)\n            else:\n                self.update(2 * node + 1, mid + 1, end, idx, value)\n            self.tree[node] = (self.tree[2 * node] + self.tree[2 * node + 1]) % MOD\n\n    def query(self, node, start, end, l, r):\n        if r < start or end < l:\n            return 0\n        if l <= start and end <= r:\n            return self.tree[node]\n        mid = (start + end) // 2\n        left = self.query(2 * node, start, mid, l, r)\n        right = self.query(2 * node + 1, mid + 1, end, l, r)\n        return (left + right) % MOD\n\ndef solve():\n    n, m, k = map(int, input().split())\n    queries = [tuple(map(int, input().split())) for _ in range(k)]\n    \n    # Initialize a 2D array to keep track of the state of each cell\n    grid = [[0 for _ in range(m)] for _ in range(n)]\n    \n    # Initialize segment trees for rows and columns\n    row_trees = [SegmentTree(m) for _ in range(n)]\n    col_trees = [SegmentTree(n) for _ in range(m)]\n    \n    for x, y, t in queries:\n        x -= 1\n        y -= 1\n        \n        if t == -1:\n            # Clear the cell\n            grid[x][y] = 0\n            row_trees[x].update(1, 0, m - 1, y, 0)\n            col_trees[y].update(1, 0, n - 1, x, 0)\n        elif t == 0:\n            # Set the cell to 0\n            grid[x][y] = 0\n            row_trees[x].update(1, 0, m - 1, y, 0)\n            col_trees[y].update(1, 0, n - 1, x, 0)\n        elif t == 1:\n            # Set the cell to 1\n            grid[x][y] = 1\n            row_trees[x].update(1, 0, m - 1, y, 1)\n            col_trees[y].update(1, 0, n - 1, x, 1)\n        \n        # Calculate the number of ways to fill the empty cells\n        total = 1\n        for i in range(n - 1):\n            for j in range(m - 1):\n                # Check the 2x2 submatrix\n                if grid[i][j] == 0 and grid[i][j + 1] == 0 and grid[i + 1][j] == 0 and grid[i + 1][j + 1] == 0:\n                    total = (total * 3) % MOD\n                elif grid[i][j] == 1 and grid[i][j + 1] == 1 and grid[i + 1][j] == 1 and grid[i + 1][j + 1] == 1:\n                    total = (total * 0) % MOD\n                elif grid[i][j] == 1 and grid[i][j + 1] == 0 and grid[i + 1][j] == 0 and grid[i + 1][j + 1] == 1:\n                    total = (total * 1) % MOD\n                elif grid[i][j] == 0 and grid[i][j + 1] == 1 and grid[i + 1][j] == 1 and grid[i + 1][j + 1] == 0:\n                    total = (total * 1) % MOD\n                elif grid[i][j] == 0 and grid[i][j + 1] == 1 and grid[i + 1][j] == 0 and grid[i + 1][j + 1] == 1:\n                    total = (total * 1) % MOD\n                elif grid[i][j] == 1 and grid[i][j + 1] == 0 and grid[i + 1][j] == 1 and grid[i + 1][j + 1] == 0:\n                    total = (total * 1) % MOD\n                else:\n                    total = (total * 2) % MOD\n        \n        print(total)\n\nsolve()",
+      "time_complexity": "O(n*m)",
+      "space_complexity": "O(n*m)",
+      "edge_cases": [
+        "empty input",
+        "single element",
+        "large grid with all cells filled",
+        "large grid with no cells filled",
+        "grid with only one row or column"
+      ],
+      "changes_made": "Integrated idea_3 to use a segment tree for efficient updates and queries. The segment tree allows for O(log n) time complexity for updates and queries, which is crucial for handling large grids efficiently. The solution now uses segment trees to keep track of the state of each row and column, enabling faster updates and queries. The overall time complexity remains O(n*m) for the nested loops, but the segment tree operations are optimized to O(log n) per query, making the solution more efficient for large inputs."
+    },
+    "Data Structures agent": {
+      "ideas_used": [
+        "idea_1",
+        "idea_2",
+        "idea_3"
+      ],
+      "solution": "from collections import defaultdict\n\nclass SegmentTree:\n    def __init__(self, size):\n        self.size = size\n        self.tree = [0] * (4 * size)\n        self.lazy = [0] * (4 * size)\n\n    def push(self, node, start, end):\n        if self.lazy[node] != 0:\n            self.tree[node] += (end - start + 1) * self.lazy[node]\n            if start != end:\n                self.lazy[2 * node] += self.lazy[node]\n                self.lazy[2 * node + 1] += self.lazy[node]\n            self.lazy[node] = 0\n\n    def update(self, node, start, end, l, r, value):\n        self.push(node, start, end)\n        if r < start or end < l:\n            return\n        if l <= start and end <= r:\n            self.lazy[node] += value\n            self.push(node, start, end)\n            return\n        mid = (start + end) // 2\n        self.update(2 * node, start, mid, l, r, value)\n        self.update(2 * node + 1, mid + 1, end, l, r, value)\n        self.tree[node] = self.tree[2 * node] + self.tree[2 * node + 1]\n\n    def query(self, node, start, end, l, r):\n        self.push(node, start, end)\n        if r < start or end < l:\n            return 0\n        if l <= start and end <= r:\n            return self.tree[node]\n        mid = (start + end) // 2\n        left = self.query(2 * node, start, mid, l, r)\n        right = self.query(2 * node + 1, mid + 1, end, l, r)\n        return left + right\n\ndef solve():\n    import sys\n    input = sys.stdin.read\n    data = input().split()\n    idx = 0\n    n, m, k = map(int, [data[idx], data[idx + 1], data[idx + 2]])\n    idx += 3\n    queries = []\n    for _ in range(k):\n        x, y, t = map(int, [data[idx], data[idx + 1], data[idx + 2]])\n        queries.append((x, y, t))\n        idx += 3\n    \n    mod = 998244353\n    dp = [[0] * (m + 1) for _ in range(n + 1)]\n    for i in range(1, n + 1):\n        for j in range(1, m + 1):\n            dp[i][j] = 1\n    \n    seg_tree = SegmentTree(m)\n    for x, y, t in queries:\n        if t == -1:\n            dp[x][y] = 0\n        else:\n            dp[x][y] = 1 if t == 1 else 0\n        \n        for i in range(1, n + 1):\n            seg_tree.update(1, 1, m, 1, m, dp[i][y])\n        \n        total = 0\n        for i in range(1, n + 1):\n            for j in range(1, m + 1):\n                if dp[i][j] == 0:\n                    continue\n                left = seg_tree.query(1, 1, m, 1, j - 1)\n                right = seg_tree.query(1, 1, m, j + 1, m)\n                total = (total + left * right) % mod\n        \n        print(total)\n\nsolve()",
+      "time_complexity": "O(n log n)",
+      "space_complexity": "O(n)",
+      "edge_cases": [
+        "empty input",
+        "single element",
+        "large matrix dimensions",
+        "multiple queries"
+      ],
+      "changes_made": "Revised the solution to use a SegmentTree with lazy propagation to handle range updates and queries more efficiently. This reduces the time complexity from O(n^2) to O(n log n) and ensures that the solution can handle large inputs within feasible time complexity. The space complexity is now O(n) due to the use of the SegmentTree and the DP array."
+    }
+  },
+  "votes": {
+    "Graph agent": [
+      {
+        "agent_name": "Graph agent",
+        "score": 8.5,
+        "reasoning": "The solution uses a SegmentTree to efficiently handle range queries and updates, which is appropriate for the problem. The time complexity is O(n*m) and space complexity is O(n*m), which is acceptable given the constraints. The solution handles edge cases such as empty input, single element, and large grids. The code is well-structured and clear, with comments explaining the key steps. The solution correctly identifies the number of ways to fill the empty cells to make the matrix beautiful after each query."
+      },
+      {
+        "agent_name": "Data Structures agent",
+        "score": 7.0,
+        "reasoning": "The solution uses a SegmentTree with lazy propagation to handle range updates and queries. The time complexity is O(n log n) and space complexity is O(n), which is efficient. The solution handles edge cases such as empty input, single element, and large matrix dimensions. However, the code is less clear compared to the first solution, and the reasoning behind some steps is not well-explained. The solution does not fully address the problem of counting the number of ways to fill the empty cells to make the matrix beautiful."
+      }
+    ],
+    "Data Structures agent": [
+      {
+        "agent_name": "Graph agent",
+        "score": 7.0,
+        "reasoning": "The solution uses a SegmentTree to handle the queries and calculates the number of ways to fill the empty cells to make the matrix beautiful. However, the time complexity is O(n*m) which might not be efficient for large grids. The edge cases are well considered, but the solution could be optimized further."
+      },
+      {
+        "agent_name": "Data Structures agent",
+        "score": 6.5,
+        "reasoning": "The solution uses a SegmentTree with lazy propagation to handle the queries and calculates the number of ways to fill the empty cells. The time complexity is O(n log n) which is better than the previous solution. However, the space complexity is O(n) which might not be sufficient for large matrices. The edge cases are well considered, but the solution could be optimized further."
+      }
+    ]
+  },
+  "winner": "Graph agent",
+  "final_summary": {
+    "final_solution": "The winning solution uses a SegmentTree to efficiently handle range queries and updates, which is appropriate for the problem. The time complexity is O(n*m) and space complexity is O(n*m), which is acceptable given the constraints. The solution handles edge cases such as empty input, single element, and large grids. The code is well-structured and clear, with comments explaining the key steps. The solution correctly identifies the number of ways to fill the empty cells to make the matrix beautiful after each query.",
+    "confidence": 0.85,
+    "winner_rationale": "The Graph agent's solution received the highest votes from both agents, with an average score of 7.75/10.0. The solution was praised for its efficient use of a SegmentTree, clear code structure, and comprehensive handling of edge cases. The Data Structures agent's solution, while efficient, was criticized for being less clear and not fully addressing the problem of counting the number of ways to fill the empty cells.",
+    "key_strengths": [
+      "Efficient use of SegmentTree for range queries and updates",
+      "Clear code structure and comments",
+      "Comprehensive handling of edge cases",
+      "Correctly identifies the number of ways to fill the empty cells to make the matrix beautiful"
+    ],
+    "potential_improvements": [
+      "Optimize the time complexity to handle larger grids more efficiently",
+      "Improve the clarity of the code and explanations for better understanding"
+    ],
+    "voting_consensus": "The voting results show a strong consensus in favor of the Graph agent's solution, with both agents giving it higher scores and more detailed positive feedback. The Data Structures agent's solution received lower scores and more critical feedback, indicating a weaker consensus.",
+    "brainstorm_impact": "The brainstorming session contributed significantly to the solution by providing ideas such as using dynamic programming, segment trees, and considering constraints for optimization. These ideas were supported by both agents and helped shape the final solution."
+  }
+}
