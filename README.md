@@ -121,6 +121,8 @@ multi-agent-rag-system/
 │   ├── __init__.py
 │   ├── credentials.env              # Production credentials (gitignored)
 │   ├── demo_credentials.env         # Demo credentials
+|
+└──example_outputs/                  # Directory with solutions from multi-agent system
 ```
 
 ---
